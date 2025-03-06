@@ -1,4 +1,4 @@
-module github.com/xavi-group/bob/bobotel
+module github.com/xavi-group/bobotel
 
 go 1.23.5
 
