@@ -2,6 +2,7 @@ package bobotel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -18,15 +19,17 @@ import (
 )
 
 var (
-	lock                   sync.RWMutex
+	traceProviderLock      sync.RWMutex
 	singletonTraceProvider trace.TracerProvider
+	configLock             sync.RWMutex
+	defaultConfig          *Config
 )
 
 // NewTracer creates an open-telemetry tracer with the given name and options. NewTracer must be called after
 // InitializeTraceProvider in order to not receive a no-op tracer.
 func NewTracer(tracerName string, options ...trace.TracerOption) trace.Tracer {
-	lock.RLock()
-	defer lock.RUnlock()
+	traceProviderLock.RLock()
+	defer traceProviderLock.RUnlock()
 
 	if singletonTraceProvider != nil {
 		return singletonTraceProvider.Tracer(tracerName, options...)
@@ -41,7 +44,22 @@ func NewNoopTracer(tracerName string, options ...trace.TracerOption) trace.Trace
 }
 
 // InitializeTraceProvider initializes an open-telemetry trace provider configured via the given TracerConfig.
-func InitializeTraceProvider(c *TracerConfig) error {
+func InitializeTraceProvider(config ...*Config) error {
+	var c *Config
+
+	if len(config) > 0 {
+		c = config[0]
+	} else {
+		configLock.RLock()
+		defer configLock.RUnlock()
+
+		c = defaultConfig
+	}
+
+	if c == nil {
+		return errors.New("no trace provider configuration provided or found")
+	}
+
 	providerResource, err := resource.Merge(
 		resource.Default(),
 		resource.NewWithAttributes(
@@ -57,8 +75,8 @@ func InitializeTraceProvider(c *TracerConfig) error {
 	opts := []sdktrace.TracerProviderOption{sdktrace.WithResource(providerResource)}
 
 	if len(c.OtelExporters) < 1 {
-		lock.Lock()
-		defer lock.Unlock()
+		traceProviderLock.Lock()
+		defer traceProviderLock.Unlock()
 
 		singletonTraceProvider = noop.NewTracerProvider()
 
@@ -86,8 +104,8 @@ func InitializeTraceProvider(c *TracerConfig) error {
 		}
 	}
 
-	lock.Lock()
-	defer lock.Unlock()
+	traceProviderLock.Lock()
+	defer traceProviderLock.Unlock()
 
 	singletonTraceProvider = sdktrace.NewTracerProvider(opts...)
 
@@ -96,8 +114,8 @@ func InitializeTraceProvider(c *TracerConfig) error {
 
 // ShutdownTraceProvider ...
 func ShutdownTraceProvider(ctx context.Context) error {
-	lock.Lock()
-	defer lock.Unlock()
+	traceProviderLock.Lock()
+	defer traceProviderLock.Unlock()
 
 	if sdkTraceProvider, ok := singletonTraceProvider.(*sdktrace.TracerProvider); ok {
 		_ = sdkTraceProvider.ForceFlush(ctx)
@@ -122,7 +140,7 @@ func RecordError(span trace.Span, err error) {
 	span.SetStatus(codes.Error, err.Error())
 }
 
-func newConsoleExporter(c *TracerConfig) (sdktrace.SpanExporter, error) {
+func newConsoleExporter(c *Config) (sdktrace.SpanExporter, error) {
 	if c.OtelConsoleFormat == "production" {
 		return stdouttrace.New(
 			stdouttrace.WithWriter(os.Stdout),
@@ -135,7 +153,7 @@ func newConsoleExporter(c *TracerConfig) (sdktrace.SpanExporter, error) {
 	)
 }
 
-func newOtlpExporter(c *TracerConfig) (sdktrace.SpanExporter, error) {
+func newOtlpExporter(c *Config) (sdktrace.SpanExporter, error) {
 	// NOTE: default http port is 4318, default grpc port is 4317
 	var exporter sdktrace.SpanExporter
 	var err error

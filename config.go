@@ -26,9 +26,18 @@ const (
 	OtlpPortKey = "port"
 )
 
-// TracerConfig defines the expected values for configuring an application tracer. It is recommended to initialize a
-// TracerConfig with either bobotel.NewTracerConfig().
-type TracerConfig struct {
+func NewConfig() *Config {
+	configLock.Lock()
+	defer configLock.Unlock()
+
+	defaultConfig = &Config{}
+
+	return defaultConfig
+}
+
+// Config defines the expected values for configuring an open-telemetry tracer. It is recommended to initialize a
+// Config with bobotel.NewConfig(), which will set the default configuration struct for initializing a trace provider.
+type Config struct {
 	bconf.ConfigStruct
 	AppID             string   `bconf:"app.id"`
 	AppName           string   `bconf:"app.name"`
@@ -39,7 +48,7 @@ type TracerConfig struct {
 	OtlpPort          int      `bconf:"otlp.port"`
 }
 
-// TracerFieldSets defines the field-sets for an application tracer.
+// FieldSets defines the field-sets for an open-telemetry tracer.
 func FieldSets() bconf.FieldSets {
 	return bconf.FieldSets{
 		OtelFieldSet(),
