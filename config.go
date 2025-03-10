@@ -26,6 +26,8 @@ const (
 	OtlpPortKey = "port"
 )
 
+// NewConfig provides an initialized Config struct, and sets the returned config struct as the default config used when
+// calling InitializeTraceProvider(config ...*Config) with no args.
 func NewConfig() *Config {
 	configLock.Lock()
 	defer configLock.Unlock()
@@ -59,53 +61,66 @@ func FieldSets() bconf.FieldSets {
 // OtelFieldSet ...
 func OtelFieldSet() *bconf.FieldSet {
 	return bconf.FSB(OtelFieldSetKey).Fields(
-		bconf.FB(OtelExportersKey, bconf.Strings).Default([]string{"console"}).Validator(
-			func(v any) error {
-				acceptedValues := []string{"console", "otlp"}
-
-				fieldValues, ok := v.([]string)
-				if !ok {
-					return fmt.Errorf("unexpected field-value type provided to validator")
-				}
-
-				for _, value := range fieldValues {
-					if found := slices.Contains(acceptedValues, value); !found {
-						return fmt.Errorf("invalid exporter value: '%s'", value)
-					}
-				}
-
-				return nil
-			},
-		).C(),
-		bconf.FB(OtelConsoleFormatKey, bconf.String).Default("production").Enumeration("production", "pretty").C(),
+		bconf.FB(OtelExportersKey, bconf.Strings).Default([]string{"console"}).Validator(otelExportersValidator).
+			Description(
+				"Otel exporters defines where traces will be sent (accepted values are 'console' and 'otlp'). ",
+				"Exporters accepts a list and can be configured to export traces to multiple destinations.",
+			).C(),
+		bconf.FB(OtelConsoleFormatKey, bconf.String).Default("production").Enumeration("production", "pretty").
+			Description(
+				"Otel console format defines the format of traces output to the console where 'pretty' is more ",
+				"human readable (adds whitespace).",
+			).C(),
 	).C()
 }
 
 // OtlpFieldSet ...
 func OtlpFieldSet() *bconf.FieldSet {
 	return bconf.FSB(OtlpFieldSetKey).Fields(
-		bconf.FB(OtlpEndpointKindKey, bconf.String).Default("agent").Enumeration("agent", "collector").C(),
-		bconf.FB(OtlpHostKey, bconf.String).Required().C(),
-		bconf.FB(OtlpPortKey, bconf.Int).Default(6831).C(),
+		bconf.FB(OtlpEndpointKindKey, bconf.String).Default("http").Enumeration("http", "grpc").
+			Description("Otlp endpoint kind defines the protocol used by the trace collector.").C(),
+		bconf.FB(OtlpHostKey, bconf.String).Required().
+			Description("Otlp host defines the host location of the trace collector.").C(),
+		bconf.FB(OtlpPortKey, bconf.Int).Default(4318).
+			Description(
+				"Otlp port defines the port of the trace collector process. For a GRPC endpoint the default is 4317.",
+			).C(),
 	).LoadConditions(
-		bconf.LCB(
-			func(f bconf.FieldValueFinder) (bool, error) {
-				exporters, found, err := f.GetStrings(OtelFieldSetKey, OtelExportersKey)
-				if !found || err != nil {
-					return false, fmt.Errorf("problem getting exporters field value")
-				}
-
-				otlpExporterFound := false
-				for _, exporter := range exporters {
-					if exporter == "otlp" {
-						otlpExporterFound = true
-
-						break
-					}
-				}
-
-				return otlpExporterFound, nil
-			},
-		).AddFieldSetDependencies(OtelFieldSetKey, OtelExportersKey).C(),
+		bconf.LCB(otlpLoadCondition).AddFieldSetDependencies(OtelFieldSetKey, OtelExportersKey).C(),
 	).C()
+}
+
+func otlpLoadCondition(f bconf.FieldValueFinder) (bool, error) {
+	exporters, found, err := f.GetStrings(OtelFieldSetKey, OtelExportersKey)
+	if !found || err != nil {
+		return false, fmt.Errorf("problem getting exporters field value")
+	}
+
+	otlpExporterFound := false
+	for _, exporter := range exporters {
+		if exporter == "otlp" {
+			otlpExporterFound = true
+
+			break
+		}
+	}
+
+	return otlpExporterFound, nil
+}
+
+func otelExportersValidator(v any) error {
+	acceptedValues := []string{"console", "otlp"}
+
+	fieldValues, ok := v.([]string)
+	if !ok {
+		return fmt.Errorf("unexpected field-value type provided to validator")
+	}
+
+	for _, value := range fieldValues {
+		if found := slices.Contains(acceptedValues, value); !found {
+			return fmt.Errorf("invalid exporter value: '%s'", value)
+		}
+	}
+
+	return nil
 }
