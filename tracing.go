@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -107,7 +108,12 @@ func InitializeTraceProvider(config ...*Config) error {
 	traceProviderLock.Lock()
 	defer traceProviderLock.Unlock()
 
-	singletonTraceProvider = sdktrace.NewTracerProvider(opts...)
+	provider := sdktrace.NewTracerProvider(opts...)
+	singletonTraceProvider = provider
+
+	// Register as the global OTEL trace provider so callers using
+	// otel.Tracer() (not just bobotel.NewTracer()) get real spans.
+	otel.SetTracerProvider(provider)
 
 	return nil
 }
