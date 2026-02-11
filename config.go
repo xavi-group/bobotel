@@ -58,7 +58,7 @@ func FieldSets() bconf.FieldSets {
 	}
 }
 
-// OtelFieldSet ...
+// OtelFieldSet defines the fields for open-telemetry configuration.
 func OtelFieldSet() *bconf.FieldSet {
 	return bconf.FSB(OtelFieldSetKey).Fields(
 		bconf.FB(OtelExportersKey, bconf.Strings).Default([]string{"console"}).Validator(otelExportersValidator).
@@ -74,7 +74,7 @@ func OtelFieldSet() *bconf.FieldSet {
 	).C()
 }
 
-// OtlpFieldSet ...
+// OtlpFieldSet defines the fields for open-telemetry protocol configuration.
 func OtlpFieldSet() *bconf.FieldSet {
 	return bconf.FSB(OtlpFieldSetKey).Fields(
 		bconf.FB(OtlpEndpointKindKey, bconf.String).Default("http").Enumeration("http", "grpc").
